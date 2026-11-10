@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#E3EAF0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Змейка и Тетрис</title>
+<style>
+:root{
+  --bg:#E3EAF0; --panel:#F7FAFC; --line:#D3DEE8; --ink:#17233A; --muted:#5B6B82;
+  --teal:#1F7A68; --coral:#E4572E;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;user-select:none}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+body{
+  background:var(--bg);color:var(--ink);
+  font-family:"Avenir Next","Segoe UI",Roboto,system-ui,sans-serif;
+  display:flex;flex-direction:column;
+  padding:env(safe-area-inset-top,0) 12px env(safe-area-inset-bottom,0);
+  touch-action:manipulation;
+}
+header{display:flex;gap:8px;align-items:center;padding:10px 0 6px}
+.tabs{display:flex;background:var(--line);border-radius:12px;padding:3px;flex:1}
+.tab{flex:1;border:0;background:none;font:inherit;font-weight:700;font-size:15px;color:var(--muted);padding:9px 0;border-radius:9px}
+.tab[aria-selected="true"]{background:var(--panel);color:var(--ink);box-shadow:0 1px 0 rgba(23,35,58,.12)}
+#pauseBtn{border:0;background:var(--ink);color:#fff;font:inherit;font-weight:700;font-size:14px;padding:11px 14px;border-radius:12px}
+.hud{display:flex;align-items:center;gap:18px;padding:4px 2px 8px}
+.stat b{display:block;font-size:24px;line-height:1;font-variant-numeric:tabular-nums;font-weight:800}
+.stat span{font-size:12px;color:var(--muted)}
+#nextWrap{margin-left:auto;display:none;align-items:center;gap:8px}
+#nextWrap span{font-size:12px;color:var(--muted)}
+body[data-game="tetris"] #nextWrap{display:flex}
+#next{width:56px;height:56px;background:var(--panel);border-radius:8px}
+#stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative}
+.board{position:relative;border-radius:10px;overflow:hidden;box-shadow:0 0 0 2px var(--ink)}
+canvas#cv{display:block;background:var(--panel)}
+#ov{position:absolute;inset:0;background:rgba(247,250,252,.93);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:20px}
+#ov.hide{display:none}
+#ov h2{margin:0;font-size:28px;font-weight:800}
+#ov p{margin:0;color:var(--muted);font-size:15px;line-height:1.4;max-width:24ch}
+#ovB{margin-top:6px;border:0;background:var(--coral);color:#fff;font:inherit;font-weight:800;font-size:18px;padding:14px 34px;border-radius:14px}
+.pad{display:none;padding:10px 0 14px;justify-content:center}
+body[data-game="snake"] #padSnake{display:flex}
+body[data-game="tetris"] #padTetris{display:flex}
+.grid{display:grid;gap:8px}
+#padSnake .grid{grid-template-columns:repeat(3,68px);grid-template-rows:repeat(2,60px)}
+#padSnake [data-a="up"]{grid-column:2}
+#padSnake [data-a="left"]{grid-row:2;grid-column:1}
+#padSnake [data-a="down"]{grid-row:2;grid-column:2}
+#padSnake [data-a="right"]{grid-row:2;grid-column:3}
+#padTetris .grid{grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,58px);width:min(100%,340px)}
+#padTetris [data-a="drop"]{grid-column:span 2}
+.k{border:0;background:var(--panel);color:var(--ink);font:inherit;font-size:24px;font-weight:800;border-radius:14px;box-shadow:0 2px 0 var(--line),0 0 0 1px var(--line);touch-action:none}
+.k:active,.k.on{background:var(--ink);color:#fff}
+.k.wide{font-size:16px}
+button:focus-visible{outline:3px solid var(--coral);outline-offset:2px}
+@media (max-height:620px){.k{font-size:20px}#padSnake .grid{grid-template-rows:repeat(2,50px)}#padTetris .grid{grid-template-rows:repeat(2,48px)}}
+</style>
+</head>
+<body data-game="snake">
+<header>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-g="snake" aria-selected="true">Змейка</button>
+    <button class="tab" role="tab" data-g="tetris" aria-selected="false">Тетрис</button>
+  </div>
+  <button id="pauseBtn" type="button">Пауза</button>
+</header>
+<div class="hud">
+  <div class="stat"><b id="sc">0</b><span>Счёт</span></div>
+  <div class="stat"><b id="bs">0</b><span>Рекорд</span></div>
+  <div class="stat"><b id="ex">0</b><span id="exL">Длина</span></div>
+  <div id="nextWrap"><span>Далее</span><canvas id="next" width="64" height="64"></canvas></div>
+</div>
+<div id="stage">
+  <div class="board" id="board">
+    <canvas id="cv"></canvas>
+    <div id="ov"><h2 id="ovT"></h2><p id="ovP"></p><button id="ovB" type="button">Играть</button></div>
+  </div>
+</div>
+<div class="pad" id="padSnake">
+  <div class="grid">
+    <button class="k" data-a="up" aria-label="Вверх">↑</button>
+    <button class="k" data-a="left" aria-label="Влево">←</button>
+    <button class="k" data-a="down" aria-label="Вниз">↓</button>
+    <button class="k" data-a="right" aria-label="Вправо">→</button>
+  </div>
+</div>
+<div class="pad" id="padTetris">
+  <div class="grid">
+    <button class="k" data-a="left" data-r="1" aria-label="Влево">←</button>
+    <button class="k" data-a="rotate" aria-label="Повернуть">↻</button>
+    <button class="k" data-a="right" data-r="1" aria-label="Вправо">→</button>
+    <button class="k" data-a="down" data-r="1" aria-label="Вниз">↓</button>
+    <button class="k wide" data-a="drop">Сбросить</button>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+var $=function(id){return document.getElementById(id)};
+var cv=$("cv"),ctx=cv.getContext("2d"),nx=$("next"),nctx=nx.getContext("2d");
+var best={snake:0,tetris:0};
+try{best=Object.assign(best,JSON.parse(localStorage.getItem("bg-best")||"{}"))}catch(e){}
+function saveBest(){try{localStorage.setItem("bg-best",JSON.stringify(best))}catch(e){}}
+function rnd(n){return Math.floor(Math.random()*n)}
+function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.arcTo(x+w,y,x+w,y+h,r);c.arcTo(x+w,y+h,x,y+h,r);c.arcTo(x,y+h,x,y,r);c.arcTo(x,y,x+w,y,r);c.closePath()}
+function grid(W,H,C){ctx.strokeStyle="#E3EAF0";ctx.lineWidth=1;ctx.beginPath();
+  for(var i=1;i<W;i++){ctx.moveTo(i*C+.5,0);ctx.lineTo(i*C+.5,H*C)}
+  for(var j=1;j<H;j++){ctx.moveTo(0,j*C+.5);ctx.lineTo(W*C,j*C+.5)}
+  ctx.stroke()}
+
+var G=null,games={},last=0;
+
+/* ---------- Змейка ---------- */
+games.snake={
+  W:15,H:15,C:24,
+  init:function(){cv.width=this.W*this.C;cv.height=this.H*this.C;this.reset()},
+  reset:function(){
+    this.body=[{x:7,y:7},{x:6,y:7},{x:5,y:7}];
+    this.dir={x:1,y:0};this.q=[];this.score=0;this.acc=0;this.step=150;this.state="ready";
+    this.placeFood()},
+  placeFood:function(){var s=this,f;
+    do{f={x:rnd(s.W),y:rnd(s.H)}}while(s.body.some(function(b){return b.x===f.x&&b.y===f.y}));
+    s.f=f},
+  act:function(a){
+    var d={left:{x:-1,y:0},right:{x:1,y:0},up:{x:0,y:-1},down:{x:0,y:1}}[a];
+    if(!d||this.state!=="play")return;
+    var ref=this.q.length?this.q[this.q.length-1]:this.dir;
+    if(d.x===-ref.x&&d.y===-ref.y)return;
+    if(d.x===ref.x&&d.y===ref.y)return;
+    if(this.q.length<3)this.q.push(d)},
+  update:function(dt){
+    this.acc+=dt;
+    while(this.acc>=this.step&&this.state==="play"){this.acc-=this.step;this.tick()}},
+  tick:function(){
+    if(this.q.length)this.dir=this.q.shift();
+    var h=this.body[0],n={x:h.x+this.dir.x,y:h.y+this.dir.y};
+    var eat=n.x===this.f.x&&n.y===this.f.y;
+    var len=this.body.length-(eat?0:1);
+    if(n.x<0||n.y<0||n.x>=this.W||n.y>=this.H)return gameOver();
+    for(var i=0;i<len;i++)if(this.body[i].x===n.x&&this.body[i].y===n.y)return gameOver();
+    this.body.unshift(n);
+    if(eat){this.score+=10;this.step=Math.max(70,this.step-3);
+      if(this.body.length>=this.W*this.H)return gameOver(true);
+      this.placeFood()}
+    else this.body.pop()},
+  draw:function(){
+    var C=this.C;ctx.clearRect(0,0,cv.width,cv.height);grid(this.W,this.H,C);
+    ctx.fillStyle="#E4572E";ctx.beginPath();ctx.arc(this.f.x*C+C/2,this.f.y*C+C/2,C*.36,0,7);ctx.fill();
+    for(var i=this.body.length-1;i>=0;i--){var b=this.body[i];
+      ctx.fillStyle=i===0?"#14584A":"#1F7A68";rr(ctx,b.x*C+1.5,b.y*C+1.5,C-3,C-3,i===0?8:6);ctx.fill()}
+    var h=this.body[0],d=this.dir,px=-d.y,py=d.x;
+    ctx.fillStyle="#fff";
+    [-1,1].forEach(function(s){ctx.beginPath();
+      ctx.arc(h.x*C+C/2+d.x*5+px*s*5,h.y*C+C/2+d.y*5+py*s*5,2.6,0,7);ctx.fill()})},
+  hud:function(){return{ex:this.body.length,exL:"Длина"}},
+  hint:"Свайпайте по полю или жмите стрелки. Не врезайтесь в стены и в себя."
+};
+
+/* ---------- Тетрис ---------- */
+var SHAPES={
+  I:[[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+  O:[[1,1],[1,1]],
+  T:[[0,1,0],[1,1,1],[0,0,0]],
+  S:[[0,1,1],[1,1,0],[0,0,0]],
+  Z:[[1,1,0],[0,1,1],[0,0,0]],
+  J:[[1,0,0],[1,1,1],[0,0,0]],
+  L:[[0,0,1],[1,1,1],[0,0,0]]
+};
+var COLORS={I:"#3BA3B5",O:"#E8B83A",T:"#8A5FB3",S:"#4FA36B",Z:"#D8553F",J:"#3F63B8",L:"#E58B3A"};
+function rot(m){var n=m.length,r=[],i,j;for(i=0;i<n;i++){r.push([]);for(j=0;j<n;j++)r[i].push(m[n-1-j][i])}return r}
+function cell(c,x,y,s,col,a){c.globalAlpha=a||1;c.fillStyle=col;rr(c,x+1,y+1,s-2,s-2,4);c.fill();
+  if(!a){c.fillStyle="rgba(255,255,255,.28)";rr(c,x+3,y+3,s-6,(s-6)/3,2);c.fill()}c.globalAlpha=1}
+
+games.tetris={
+  W:10,H:20,C:24,
+  init:function(){cv.width=this.W*this.C;cv.height=this.H*this.C;this.reset()},
+  reset:function(){
+    this.board=[];for(var y=0;y<this.H;y++)this.board.push(new Array(this.W).fill(null));
+    this.score=0;this.lines=0;this.level=1;this.acc=0;this.bag=[];this.state="ready";
+    this.nextKey=this.draw7();this.spawn()},
+  draw7:function(){if(!this.bag.length){this.bag=Object.keys(SHAPES);
+      for(var i=this.bag.length-1;i>0;i--){var j=rnd(i+1),t=this.bag[i];this.bag[i]=this.bag[j];this.bag[j]=t}}
+    return this.bag.pop()},
+  spawn:function(){
+    var k=this.nextKey;this.nextKey=this.draw7();
+    this.p={k:k,m:SHAPES[k].map(function(r){return r.slice()}),x:0,y:0};
+    this.p.x=Math.floor((this.W-this.p.m.length)/2);
+    this.drawNext();
+    if(this.hit(this.p.m,this.p.x,this.p.y)){this.state="over";gameOver()}},
+  hit:function(m,px,py){
+    for(var y=0;y<m.length;y++)for(var x=0;x<m.length;x++){
+      if(!m[y][x])continue;var X=px+x,Y=py+y;
+      if(X<0||X>=this.W||Y>=this.H)return true;
+      if(Y>=0&&this.board[Y][X])return true}
+    return false},
+  move:function(dx,dy){
+    if(this.hit(this.p.m,this.p.x+dx,this.p.y+dy))return false;
+    this.p.x+=dx;this.p.y+=dy;return true},
+  rotate:function(){
+    var nm=rot(this.p.m),ks=[0,-1,1,-2,2];
+    for(var i=0;i<ks.length;i++)if(!this.hit(nm,this.p.x+ks[i],this.p.y)){this.p.m=nm;this.p.x+=ks[i];return}},
+  lock:function(){
+    var p=this.p,m=p.m;
+    for(var y=0;y<m.length;y++)for(var x=0;x<m.length;x++)
+      if(m[y][x]&&p.y+y>=0)this.board[p.y+y][p.x+x]=p.k;
+    var left=this.board.filter(function(r){return r.some(function(c){return !c})});
+    var n=this.H-left.length;
+    if(n){while(left.length<this.H)left.unshift(new Array(this.W).fill(null));
+      this.board=left;this.lines+=n;
+      this.score+=[0,100,300,500,800][n]*this.level;
+      this.level=1+Math.floor(this.lines/10)}
+    this.spawn()},
+  interval:function(){return Math.max(90,800-(this.level-1)*70)},
+  act:function(a){
+    if(this.state!=="play")return;
+    if(a==="left")this.move(-1,0);
+    else if(a==="right")this.move(1,0);
+    else if(a==="rotate"||a==="up")this.rotate();
+    else if(a==="down"){if(this.move(0,1)){this.score+=1;this.acc=0}else{this.lock();this.acc=0}}
+    else if(a==="drop"){var r=0;while(this.move(0,1))r++;this.score+=r*2;this.lock();this.acc=0}},
+  update:function(dt){
+    this.acc+=dt;var iv=this.interval();
+    while(this.acc>=iv&&this.state==="play"){this.acc-=iv;if(!this.move(0,1))this.lock()}},
+  ghostY:function(){var y=this.p.y;while(!this.hit(this.p.m,this.p.x,y+1))y++;return y},
+  draw:function(){
+    var C=this.C,x,y;ctx.clearRect(0,0,cv.width,cv.height);grid(this.W,this.H,C);
+    for(y=0;y<this.H;y++)for(x=0;x<this.W;x++){var k=this.board[y][x];if(k)cell(ctx,x*C,y*C,C,COLORS[k])}
+    if(this.state==="over"&&!this.p)return;
+    var p=this.p,gy=this.ghostY();
+    for(y=0;y<p.m.length;y++)for(x=0;x<p.m.length;x++)if(p.m[y][x]){
+      if(gy+y>=0)cell(ctx,(p.x+x)*C,(gy+y)*C,C,COLORS[p.k],.22);
+      if(p.y+y>=0)cell(ctx,(p.x+x)*C,(p.y+y)*C,C,COLORS[p.k])}},
+  drawNext:function(){
+    nctx.clearRect(0,0,64,64);var m=SHAPES[this.nextKey],n=m.length,s=14,o=(64-n*s)/2;
+    for(var y=0;y<n;y++)for(var x=0;x<n;x++)if(m[y][x])cell(nctx,o+x*s,o+y*s,s,COLORS[this.nextKey])},
+  hud:function(){return{ex:this.lines,exL:"Линии"}},
+  hint:"Кнопки внизу двигают и поворачивают фигуру. Соберите полные линии."
+};
+
+/* ---------- Общий каркас ---------- */
+var ov=$("ov"),ovT=$("ovT"),ovP=$("ovP"),ovB=$("ovB"),cache={};
+function showOv(t,p,b){ovT.textContent=t;ovP.textContent=p;ovB.textContent=b;ov.classList.remove("hide")}
+function gameOver(win){
+  G.state="over";
+  var name=G===games.snake?"snake":"tetris",rec=false;
+  if(G.score>best[name]){best[name]=G.score;rec=G.score>0;saveBest()}
+  showOv(win?"Победа!":"Игра окончена","Счёт: "+G.score+(rec?". Новый рекорд!":""),"Ещё раз")}
+function start(){G.reset();G.state="play";ov.classList.add("hide");last=performance.now()}
+function pause(){if(G.state==="play"){G.state="pause";showOv("Пауза","Игра ждёт вас.","Продолжить")}}
+function resume(){G.state="play";ov.classList.add("hide");last=performance.now()}
+ovB.addEventListener("click",function(){G.state==="pause"?resume():start()});
+$("pauseBtn").addEventListener("click",function(){G.state==="play"?pause():G.state==="pause"?resume():0});
+document.addEventListener("visibilitychange",function(){if(document.hidden)pause()});
+
+function select(name){
+  document.body.dataset.game=name;
+  Array.prototype.forEach.call(document.querySelectorAll(".tab"),function(t){t.setAttribute("aria-selected",String(t.dataset.g===name))});
+  G=games[name];G.init();if(name==="tetris")G.drawNext();
+  showOv(name==="snake"?"Змейка":"Тетрис",G.hint,"Играть");fit();cache={}}
+Array.prototype.forEach.call(document.querySelectorAll(".tab"),function(t){
+  t.addEventListener("click",function(){if(G!==games[t.dataset.g])select(t.dataset.g)})});
+
+function fit(){
+  var st=$("stage"),w=st.clientWidth-4,h=st.clientHeight-4,r=cv.width/cv.height,cw=w,ch=w/r;
+  if(ch>h){ch=h;cw=h*r}
+  cv.style.width=Math.floor(cw)+"px";cv.style.height=Math.floor(ch)+"px"}
+window.addEventListener("resize",fit);window.addEventListener("orientationchange",function(){setTimeout(fit,200)});
+
+function hud(){
+  var name=G===games.snake?"snake":"tetris",h=G.hud();
+  var v={sc:G.score,bs:Math.max(best[name],G.score),ex:h.ex,exL:h.exL};
+  for(var k in v)if(cache[k]!==v[k]){cache[k]=v[k];$(k).textContent=v[k]}}
+
+function loop(t){
+  var dt=Math.min(t-last,100);last=t;
+  if(G.state==="play")G.update(dt);
+  G.draw();hud();requestAnimationFrame(loop)}
+
+/* Ввод: кнопки */
+Array.prototype.forEach.call(document.querySelectorAll(".k"),function(b){
+  var a=b.dataset.a,rep=b.dataset.r==="1",t1=0,t2=0;
+  function stop(){clearTimeout(t1);clearInterval(t2);b.classList.remove("on")}
+  b.addEventListener("pointerdown",function(e){
+    e.preventDefault();b.classList.add("on");G.act(a);
+    if(rep){t1=setTimeout(function(){t2=setInterval(function(){G.act(a)},a==="down"?60:100)},220)}});
+  ["pointerup","pointercancel","pointerleave"].forEach(function(ev){b.addEventListener(ev,stop)})});
+
+/* Ввод: свайпы по полю (змейка) */
+var sx=0,sy=0,sw=false;
+$("board").addEventListener("pointerdown",function(e){sx=e.clientX;sy=e.clientY;sw=true});
+$("board").addEventListener("pointermove",function(e){
+  if(!sw||G!==games.snake)return;
+  var dx=e.clientX-sx,dy=e.clientY-sy;
+  if(Math.abs(dx)<22&&Math.abs(dy)<22)return;
+  G.act(Math.abs(dx)>Math.abs(dy)?(dx>0?"right":"left"):(dy>0?"down":"up"));
+  sx=e.clientX;sy=e.clientY});
+window.addEventListener("pointerup",function(){sw=false});
+$("board").addEventListener("touchmove",function(e){e.preventDefault()},{passive:false});
+
+/* Ввод: клавиатура */
+document.addEventListener("keydown",function(e){
+  var m={ArrowLeft:"left",KeyA:"left",ArrowRight:"right",KeyD:"right",ArrowUp:"up",KeyW:"up",ArrowDown:"down",KeyS:"down"};
+  if(m[e.code]){e.preventDefault();G.act(m[e.code]);return}
+  if(e.code==="Space"){e.preventDefault();
+    if(G.state==="play"){if(G===games.tetris)G.act("drop")}
+    else if(G.state==="pause")resume();else start();return}
+  if(e.code==="KeyP"||e.code==="Escape"){G.state==="play"?pause():G.state==="pause"?resume():0}
+  if(e.code==="Enter"&&G.state!=="play"){G.state==="pause"?resume():start()}});
+
+select("snake");
+requestAnimationFrame(function(t){last=t;loop(t)});
+})();
+</script>
+</body>
+</html>
